@@ -1,6 +1,7 @@
 package gows
 
 import (
+	"crypto/rand"
 	"fmt"
 	"net"
 	"net/url"
@@ -23,6 +24,13 @@ type WebSocketClient struct {
 
 	key string
 }
+
+type PayloadKind uint8
+
+const (
+	PlKindText PayloadKind = iota
+	PlKindBinary
+)
 
 func NewWebSocketClient(url string /*protocols []string*/) (WebSocketClient, error) {
 	client := WebSocketClient{
@@ -71,8 +79,17 @@ func connect(client *WebSocketClient, addr string) error {
 	return nil
 }
 
-func (client *WebSocketClient) Send(data []byte) error {
-	if _, err := client.conn.Write(data); err != nil {
+func (client *WebSocketClient) SendText(text string) error {
+	return client.send([]byte(text), PlKindText)
+}
+
+func (client *WebSocketClient) SendBlob(data []byte) error {
+	return client.send(data, PlKindBinary)
+}
+
+func (client *WebSocketClient) send(data []byte, kind PayloadKind) error {
+	payload := client.makePayload(data, kind)
+	if _, err := client.conn.Write(payload); err != nil {
 		return err
 	}
 	return nil
@@ -101,13 +118,49 @@ func (client *WebSocketClient) Close() error {
 type op uint8
 
 const (
-	opFIN   op = 0x0
-	opTEXT     = 0x1
-	opBIN      = 0x2
-	opCLOSE    = 0x8
-	opPING     = 0x9
-	opPONG     = 0xa
+	opCONT  op = 0x0 /* continuation frame */
+	opTEXT     = 0x1 /* text frame */
+	opBIN      = 0x2 /* binary frame */
+	opCLOSE    = 0x8 /* connection close */
+	opPING     = 0x9 /* ping */
+	opPONG     = 0xa /* pong */
 )
+
+func (client *WebSocketClient) makePayload(data []byte, payloadKind PayloadKind) []byte {
+	payload := []byte{}
+
+	dataLen := len(data)
+	if dataLen < 126 {
+		kind := opBIN
+		if payloadKind == PlKindText {
+			kind = opTEXT
+		}
+
+		frameMeta := uint8((1 << 7) | kind)
+		payload = append(payload, frameMeta, uint8((1<<7)|dataLen))
+	} else if dataLen == 126 {
+	} else if dataLen == 127 {
+	}
+	mask := generateMask()
+	payload = append(payload, mask[:]...)
+
+	// mask the data
+	for i, octet := range data {
+		j := i % 4
+		payload = append(payload, octet^mask[j])
+	}
+
+	return payload
+}
+
+func generateMask() [4]byte {
+	mask := [4]byte{}
+	if _, err := rand.Read(mask[:]); err != nil {
+		die("internal error: couldnot generate mask: %s\n", err.Error())
+	}
+
+	return mask
+}
 
 func (client *WebSocketClient) handshake() string {
 	return fmt.Sprintf(""+
