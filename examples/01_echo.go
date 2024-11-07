@@ -1,3 +1,5 @@
+// MIT License Copyright (c) 2024 Saheed Adeleye [aadesaed <@> gmail <.> com]
+
 package main
 
 import (
