@@ -82,10 +82,12 @@ func connect(client *WebSocketClient, addr string) error {
 }
 
 func (client *WebSocketClient) SendText(text string) error {
+	assert(client.conn != nil, "gows.SendText: nil connection endpoint")
 	return client.send([]byte(text), PlKindText)
 }
 
 func (client *WebSocketClient) SendBlob(data []byte) error {
+	assert(client.conn != nil, "gows.SendBlob: nil connection endpoint")
 	return client.send(data, PlKindBinary)
 }
 
@@ -176,4 +178,10 @@ func (client *WebSocketClient) handshake() string {
 		"\r\n",
 		client.host, client.key, strings.Join(client.protocols, ", "), WS_VERSION,
 	)
+}
+
+func assert(cond bool, msg string) {
+	if !cond {
+		panic(msg)
+	}
 }
